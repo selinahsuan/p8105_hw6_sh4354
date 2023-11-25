@@ -1,0 +1,16 @@
+---
+title: "Homework 6"
+author: "Selina Hsuan"
+date: '`r format(Sys.time(), "%Y-%m-%d")`'
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 1
+
+
+
+## Problem 2
