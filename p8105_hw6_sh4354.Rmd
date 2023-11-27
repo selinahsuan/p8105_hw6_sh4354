@@ -9,8 +9,126 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(tidyverse)
+
+set.seed(1)
+```
+
+
 ## Problem 1
 
 
 
 ## Problem 2
+
+Download data
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2022-01-01",
+    date_max = "2022-12-31") |>
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) |>
+  select(name, id, everything())
+```
+
+
+create simple linear regression model
+```{r}
+model = 
+  weather_df |> 
+  lm(tmax ~ tmin + prcp, data = _) |> 
+  broom::glance() |> 
+  select(r.squared)
+```
+
+
+```{r}
+weather_df |> 
+  lm(tmax ~ tmin + prcp, data = _) |> 
+  broom::tidy() |> 
+  slice(c(2,3)) |> 
+  select(term, estimate) |> 
+  pivot_wider(
+    names_from = term, values_from = estimate
+    ) |> 
+  mutate(log = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA))
+```
+
+create bootstrap function
+```{r}
+boot_sample = function(df) {
+  
+  data = sample_frac(df, replace = TRUE)
+  
+  output1 = data |> 
+    lm(tmax ~ tmin + prcp, data = _) |> 
+    broom::glance() |> 
+    select(r.squared)
+  
+  output2 = data |> 
+  lm(tmax ~ tmin + prcp, data = _) |> 
+  broom::tidy() |> 
+  slice(c(2,3)) |> 
+  select(term, estimate) |> 
+  pivot_wider(
+    names_from = term, values_from = estimate
+    ) |> 
+  mutate(log = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA)) |> 
+  select(log)
+  
+  tibble(
+    output1,
+    output2
+  )
+}
+```
+
+draw many samples 
+```{r}
+boot_straps = 
+  tibble(strap_number = 1:5000) |> 
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(weather_df))
+  ) |> 
+  unnest(strap_sample)
+
+```
+
+plot distribution of R square values
+```{r}
+boot_straps |> 
+  ggplot(aes(x = r.squared)) + 
+  geom_density()
+```
+
+plot distribution of log values
+```{r}
+boot_straps |> 
+  ggplot(aes(x = log)) + 
+  geom_density()
+```
+
+
+calculate 95% confidence intervals
+```{r}
+boot_straps |> 
+  select(r.squared,log) |> 
+  pivot_longer(
+    cols = c(r.squared, log),
+    names_to = "quantity", 
+    values_to = "estimate"
+  ) |> 
+  group_by(quantity) |> 
+  summarize(
+    ci_lower = quantile(estimate, 0.025, na.rm = TRUE),
+    ci_upper = quantile(estimate, 0.975, na.rm = TRUE))
+ 
+```
+
+ 
