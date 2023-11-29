@@ -5,12 +5,15 @@ date: '`r format(Sys.time(), "%Y-%m-%d")`'
 output: github_document
 ---
 
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(collapse = TRUE, message = FALSE)
 ```
 
 ```{r}
 library(tidyverse)
+library(modelr)
+library(mgcv)
 
 set.seed(1)
 ```
@@ -131,4 +134,91 @@ boot_straps |>
  
 ```
 
- 
+## Problem 3
+
+Load data
+```{r}
+birthweight =
+  read_csv("data/birthweight.csv") |> 
+  janitor::clean_names() |> 
+  mutate(babysex = as.factor(babysex))
+```
+
+create regression model
+```{r}
+model = 
+  birthweight |> 
+  lm(bwt ~ blength + fincome, data = _)
+```
+I hypothesize that baby's length at birth (blength) and family monthly income (fincome) may be a good model for birth weight. The baby's length is likely directly related due birth weight because a larger baby weights more. Family income may also be related to birth weight due to social determinants of health, in which families with lower income have babies with lower weight. 
+
+
+plot model residuals against predicted values
+```{r}
+birthweight |> 
+  modelr::add_predictions(model) |> 
+  modelr::add_residuals(model) |> 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() + 
+  labs(title = "Residuals vs. Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals") 
+```
+
+
+model comparisons
+```{r}
+comparison1 = 
+  birthweight |> 
+  lm(bwt ~ blength + gaweeks, data = _)
+
+comparison2 = 
+  birthweight |> 
+  lm(bwt ~ babysex*bhead*blength, data = _)
+```
+
+```{r}
+birthweight |> 
+  gather_predictions(model, comparison1, comparison2) |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = blength, y = bwt)) + 
+  geom_point(alpha = .5) +
+  geom_line(aes(y = pred), color = "red") + 
+  facet_grid(~model)
+```
+
+```{r}
+cv_df =
+  crossv_mc(birthweight, 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+```{r}
+cv_df = 
+  cv_df |> 
+  mutate(
+    model_mod  = map(train, \(df) lm(bwt ~ blength + fincome, data = df)),
+    comparison1_mod     = map(train, \(df) lm(bwt ~ blength + gaweeks, data = df)),
+    comparison2_mod  = map(train, \(df) lm(bwt ~ babysex*bhead*blength, data = df))) |> 
+  mutate(
+    rmse_model = map2_dbl(model_mod, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_comparison1    = map2_dbl(comparison1_mod, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_comparison2 = map2_dbl(comparison2_mod, test, \(mod, df) rmse(model = mod, data = df)))
+```
+
+
+```{r}
+cv_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+Between the 3 regression models, the second comparison model with interactions has the lowest RSME distribution and the best predictive accuracy. 
