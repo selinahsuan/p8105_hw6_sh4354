@@ -93,7 +93,7 @@ model_results |>
 
 ## Problem 2
 
-Download data
+First, we download the Central Park weather data. 
 ```{r}
 weather_df = 
   rnoaa::meteo_pull_monitors(
@@ -109,7 +109,7 @@ weather_df =
 ```
 
 
-create simple linear regression model
+We create a simple linear regression model with `tmax` as the response and `tmin` and `prcp` as the predictors. Using `broom:glance`, we extract r^2 from the fitted regression. 
 ```{r}
 model = 
   weather_df |> 
@@ -119,6 +119,7 @@ model =
 ```
 
 
+Next, we use `broom:tidy` to compute log(β̂1∗β̂2). If either `tmin` or `prcp` contain a negative value, the log value is recorded as "N/A."
 ```{r}
 weather_df |> 
   lm(tmax ~ tmin + prcp, data = _) |> 
@@ -131,7 +132,8 @@ weather_df |>
   mutate(log = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA))
 ```
 
-create bootstrap function
+Using a function, we create a data frame that contains the r^2 and log(β̂1∗β̂) value from a simple linear regression model with `tmax` as the response and `tmin` and `prcp` as the predictors. 
+
 ```{r}
 boot_sample = function(df) {
   
@@ -160,7 +162,7 @@ boot_sample = function(df) {
 }
 ```
 
-draw many samples 
+Now we produce estimates of the quantities for each of 5000 bootstrap samples. 
 ```{r}
 boot_straps = 
   tibble(strap_number = 1:5000) |> 
@@ -171,14 +173,14 @@ boot_straps =
 
 ```
 
-plot distribution of R square values
+Here is a plot of the distribution of r^2 values. 
 ```{r}
 boot_straps |> 
   ggplot(aes(x = r.squared)) + 
   geom_density()
 ```
 
-plot distribution of log values
+We also create a plot of the distribution of log(β̂1∗β̂) values.
 ```{r}
 boot_straps |> 
   ggplot(aes(x = log)) + 
@@ -189,7 +191,7 @@ Out of 5000 values of log(β1*β2), 3331 were removed from the analysis because 
 
 
 
-calculate 95% confidence intervals
+Finally, using the 5000 bootstrap estimates, we identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β̂1∗β̂). 
 ```{r}
 boot_straps |> 
   select(r.squared,log) |> 
@@ -205,9 +207,12 @@ boot_straps |>
  
 ```
 
+
+
+
 ## Problem 3
 
-Load data
+First, we load and clean the birthweight dataset. 
 ```{r}
 birthweight =
   read_csv("data/birthweight.csv") |> 
@@ -215,20 +220,20 @@ birthweight =
   mutate(babysex = as.factor(babysex))
 ```
 
-create regression model
+Next, we propose a regression model for birthweight. I hypothesize that baby's length at birth (blength) and family monthly income (fincome) may be a good model for birth weight. The baby's length is likely directly related due birth weight because a larger baby weighs more. Family income may also be related to birth weight due to social determinants of health, in which families with lower income are more likely to have high blood pressure, diabetes, and heart, and other chronic health conditions, which may contribute to babies with lower weight. 
+
 ```{r}
-model = 
+proposed_mod = 
   birthweight |> 
   lm(bwt ~ blength + fincome, data = _)
 ```
-I hypothesize that baby's length at birth (blength) and family monthly income (fincome) may be a good model for birth weight. The baby's length is likely directly related due birth weight because a larger baby weighs more. Family income may also be related to birth weight due to social determinants of health, in which families with lower income have babies with lower weight. 
 
 
-plot model residuals against predicted values
+Using, `add_predictions` and `add_residuals`, we create a plot of model residuals against fitted values. 
 ```{r}
 birthweight |> 
-  modelr::add_predictions(model) |> 
-  modelr::add_residuals(model) |> 
+  modelr::add_predictions(proposed_mod) |> 
+  modelr::add_residuals(proposed_mod) |> 
   ggplot(aes(x = pred, y = resid)) + 
   geom_point() + 
   labs(title = "Residuals vs. Fitted Values",
@@ -237,20 +242,22 @@ birthweight |>
 ```
 
 
-model comparisons
+Now we create two other regression models for comparisons. 
 ```{r}
-comparison1 = 
+comparison1_mod = 
   birthweight |> 
   lm(bwt ~ blength + gaweeks, data = _)
 
-comparison2 = 
+comparison2_mod = 
   birthweight |> 
   lm(bwt ~ babysex*bhead*blength, data = _)
 ```
 
+
+Here is a plot of the three models. 
 ```{r}
 birthweight |> 
-  gather_predictions(model, comparison1, comparison2) |> 
+  gather_predictions(proposed_mod, comparison1_mod, comparison2_mod) |> 
   mutate(model = fct_inorder(model)) |> 
   ggplot(aes(x = blength, y = bwt)) + 
   geom_point(alpha = .5) +
@@ -258,6 +265,8 @@ birthweight |>
   facet_grid(~model)
 ```
 
+
+Using `cross_mc`, we create a data frame of training and test data. 
 ```{r}
 cv_df =
   crossv_mc(birthweight, 100) |> 
@@ -266,6 +275,7 @@ cv_df =
     test = map(test, as_tibble))
 ```
 
+Next, we fit the candidate models and assess prediction accuracy by obtaining RMSE's using `mutate`, `map`, and `map2`.
 ```{r}
 cv_df = 
   cv_df |> 
@@ -280,6 +290,7 @@ cv_df =
 ```
 
 
+The plot below shows the distribution of RMSE values for each candidate model.
 ```{r}
 cv_df |> 
   select(starts_with("rmse")) |> 
@@ -292,4 +303,4 @@ cv_df |>
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
-Between the 3 regression models, the second comparison model with interactions has the lowest RSME distribution and the best predictive accuracy. 
+Between the 3 regression models, the second comparison model with interactions has the lowest RSME distribution and thus the best predictive accuracy. The RSME distribution for the proposed model and the first comparison model are similar, although the minimum and maximum values are slightly higher for the proposed model. 
