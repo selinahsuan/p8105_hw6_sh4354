@@ -93,7 +93,8 @@ model_results |>
 
 ## Problem 2
 
-First, we download the Central Park weather data. 
+First, we download Central Park weather data.
+
 ```{r}
 weather_df = 
   rnoaa::meteo_pull_monitors(
@@ -109,7 +110,8 @@ weather_df =
 ```
 
 
-We create a simple linear regression model with `tmax` as the response and `tmin` and `prcp` as the predictors. Using `broom:glance`, we extract r^2 from the fitted regression. 
+We create a simple linear regression model with `tmax` as the response and `tmin` and `prcp` as the predictors. 
+
 ```{r}
 model = 
   weather_df |> 
@@ -119,20 +121,7 @@ model =
 ```
 
 
-Next, we use `broom:tidy` to compute log(β̂1∗β̂2). If either `tmin` or `prcp` contain a negative value, the log value is recorded as "N/A."
-```{r}
-weather_df |> 
-  lm(tmax ~ tmin + prcp, data = _) |> 
-  broom::tidy() |> 
-  slice(c(2,3)) |> 
-  select(term, estimate) |> 
-  pivot_wider(
-    names_from = term, values_from = estimate
-    ) |> 
-  mutate(log = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA))
-```
-
-Using a function, we create a data frame that contains the r^2 and log(β̂1∗β̂) value from a simple linear regression model with `tmax` as the response and `tmin` and `prcp` as the predictors. 
+Using a function, we create a data frame that contains the r^2 and log(β̂1∗β̂2) value from the simple linear regression model. We extract r^2 from the fitted regression using `broom:glance`, and we use `broom:tidy` to compute log(β̂1∗β̂2). If either `tmin` or `prcp` contain a negative value, the log value is recorded as "N/A."
 
 ```{r}
 boot_sample = function(df) {
@@ -142,7 +131,7 @@ boot_sample = function(df) {
   output1 = data |> 
     lm(tmax ~ tmin + prcp, data = _) |> 
     broom::glance() |> 
-    select(r.squared)
+    select(r.squared) 
   
   output2 = data |> 
   lm(tmax ~ tmin + prcp, data = _) |> 
@@ -152,8 +141,8 @@ boot_sample = function(df) {
   pivot_wider(
     names_from = term, values_from = estimate
     ) |> 
-  mutate(log = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA)) |> 
-  select(log)
+  mutate(log_betas = ifelse(tmin > 0 & prcp > 0, log(tmin * prcp), NA)) |> 
+  select(log_betas) 
   
   tibble(
     output1,
@@ -162,7 +151,9 @@ boot_sample = function(df) {
 }
 ```
 
-Now we produce estimates of the quantities for each of 5000 bootstrap samples. 
+
+Now we produce estimates of the two quantities for each of 5000 bootstrap samples. 
+
 ```{r}
 boot_straps = 
   tibble(strap_number = 1:5000) |> 
@@ -173,37 +164,40 @@ boot_straps =
 
 ```
 
-Here is a plot of the distribution of r^2 values. 
+
+We can create a plot of the distribution of r^2 values. 
+
 ```{r}
 boot_straps |> 
   ggplot(aes(x = r.squared)) + 
   geom_density()
 ```
 
-We also create a plot of the distribution of log(β̂1∗β̂) values.
+
+We can also create a plot of the distribution of log(β̂1∗β̂2̂) values. In this plot, out of 5000 values of log(β1*β2), 3331 were removed from the analysis because the value was "N/A".
+
 ```{r}
 boot_straps |> 
-  ggplot(aes(x = log)) + 
+  ggplot(aes(x = log_betas)) + 
   geom_density()
 ```
 
-Out of 5000 values of log(β1*β2), 3331 were removed from the analysis because the value was "N/A". 
 
+Finally, using the 5000 bootstrap estimates, we identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β̂1∗β̂2). 
 
-
-Finally, using the 5000 bootstrap estimates, we identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β̂1∗β̂). 
 ```{r}
 boot_straps |> 
-  select(r.squared,log) |> 
+  select(r.squared,log_betas) |> 
   pivot_longer(
-    cols = c(r.squared, log),
+    cols = c(r.squared, log_betas),
     names_to = "quantity", 
     values_to = "estimate"
   ) |> 
   group_by(quantity) |> 
   summarize(
     ci_lower = quantile(estimate, 0.025, na.rm = TRUE),
-    ci_upper = quantile(estimate, 0.975, na.rm = TRUE))
+    ci_upper = quantile(estimate, 0.975, na.rm = TRUE)) |> 
+  knitr::kable(digits = 4)
  
 ```
 
@@ -220,6 +214,7 @@ birthweight =
   mutate(babysex = as.factor(babysex))
 ```
 
+
 Next, we propose a regression model for birthweight. I hypothesize that baby's length at birth (blength) and family monthly income (fincome) may be a good model for birth weight. The baby's length is likely directly related due birth weight because a larger baby weighs more. Family income may also be related to birth weight due to social determinants of health, in which families with lower income are more likely to have high blood pressure, diabetes, and heart, and other chronic health conditions, which may contribute to babies with lower weight. 
 
 ```{r}
@@ -229,7 +224,8 @@ proposed_mod =
 ```
 
 
-Using, `add_predictions` and `add_residuals`, we create a plot of model residuals against fitted values. 
+Using `add_predictions` and `add_residuals`, we create a plot of model residuals against fitted values. 
+
 ```{r}
 birthweight |> 
   modelr::add_predictions(proposed_mod) |> 
@@ -243,6 +239,7 @@ birthweight |>
 
 
 Now we create two other regression models for comparisons. 
+
 ```{r}
 comparison1_mod = 
   birthweight |> 
@@ -255,6 +252,7 @@ comparison2_mod =
 
 
 Here is a plot of the three models. 
+
 ```{r}
 birthweight |> 
   gather_predictions(proposed_mod, comparison1_mod, comparison2_mod) |> 
@@ -267,6 +265,7 @@ birthweight |>
 
 
 Using `cross_mc`, we create a data frame of training and test data. 
+
 ```{r}
 cv_df =
   crossv_mc(birthweight, 100) |> 
@@ -276,6 +275,7 @@ cv_df =
 ```
 
 Next, we fit the candidate models and assess prediction accuracy by obtaining RMSE's using `mutate`, `map`, and `map2`.
+
 ```{r}
 cv_df = 
   cv_df |> 
@@ -291,6 +291,7 @@ cv_df =
 
 
 The plot below shows the distribution of RMSE values for each candidate model.
+
 ```{r}
 cv_df |> 
   select(starts_with("rmse")) |> 
